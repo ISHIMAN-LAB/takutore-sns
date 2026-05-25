@@ -19,27 +19,19 @@ if [[ ! -f "$ENV_FILE" ]]; then
     exit 1
 fi
 
-# .env をロード (export せずに連想配列に入れる)
-declare -A ENV
-while IFS='=' read -r key value; do
-    [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
-    key="${key// /}"
-    ENV["$key"]="$value"
-done < "$ENV_FILE"
-
 # 同期対象 (変動する値)
-SYNC_KEYS=(IG_ACCESS_TOKEN IG_TOKEN_EXPIRES_AT FB_PAGE_ACCESS_TOKEN)
+SYNC_KEYS="IG_ACCESS_TOKEN IG_TOKEN_EXPIRES_AT FB_PAGE_ACCESS_TOKEN"
 
 echo "Target repo: $REPO"
-for key in "${SYNC_KEYS[@]}"; do
-    val="${ENV[$key]:-}"
+for key in $SYNC_KEYS; do
+    # `KEY=VALUE` 行から VALUE を抽出 (最初に一致した行のみ, # 行は無視)
+    val=$(grep -m1 "^${key}=" "$ENV_FILE" | cut -d= -f2- || true)
     if [[ -z "$val" ]]; then
-        echo "  SKIP $key (空)"
+        echo "  SKIP $key (空 or .env に無し)"
         continue
     fi
     if gh secret set "$key" --repo "$REPO" --body "$val" >/dev/null 2>&1; then
-        len="${#val}"
-        echo "  OK   $key (len=$len)"
+        echo "  OK   $key (len=${#val})"
     else
         echo "  FAIL $key (gh secret set 失敗)" >&2
         exit 2
