@@ -39,12 +39,18 @@ HANDOFF.md の「今後のタスク」セクションを参考に作業してく
 | IG 単発投稿スクリプト | ✅ | [post_ig.py](post_ig.py) |
 | FB 単発投稿スクリプト | ✅ | [post_fb.py](post_fb.py) |
 | IG 実投稿テスト | ✅ | 1件投稿済み (`https://www.instagram.com/p/DYvqLDyCSgc/` ・要手動削除) |
+| GitHub Repo (PUBLIC) | ✅ | https://github.com/ISHIMAN-LAB/takutore-sns |
+| GH Secrets (8件) | ✅ | FB_APP_ID, FB_APP_SECRET, IG_USER_ID, IG_ACCESS_TOKEN, IG_TOKEN_EXPIRES_AT, FB_PAGE_ID, FB_PAGE_ACCESS_TOKEN, IMAGE_BASE_URL |
+| GH Actions workflow | ✅ | M/W/F 19:30 JST, DRY_RUN=true デフォルトで安全 |
+| 投稿画像 (5/12 枚) | ⚠️ 仮置き | 03 雨, 05 朝活, 06 一人練習, 09 初心者, 11 予約 (全部 Unsplash 仮置き — 実撮影で差し替え予定) |
+| 投稿画像 (残り 7/12 枚) | ❌ | 01 深夜店内, 02 ロボット, 04 ビジネスバッグ, 07 店内2台, 08 大会前, 10 親子, 12 店の入口 (実撮影が必要 — 未準備な投稿は IG ではスキップされ FB はテキストのみ投稿される) |
 
 ### 保留中
 
-- **X (Twitter)**: 別作業として後日対応 (pay-per-use登録など)
-- **GitHub Actions 統合**: 別途進行中 (この HANDOFF の「今後のタスク」を参照)
+- **X (Twitter)**: Basic プラン $200/月 が必要なため当面見送り (代替案として Threads も保留)
 - **FB 実投稿テスト**: `post_fb.py --no-dry-run` をいつでも実行可能 (実投稿は和英さんの GO 後に)
+- **本番稼働切替**: `gh variable set DRY_RUN --body false` を実行すると次の cron から実投稿開始
+- **画像実撮影**: 7枚 (01,02,04,07,08,10,12) を `posts.json` の `image_hint` に従って撮影して `images/` に commit
 
 ### 重要な訂正
 
