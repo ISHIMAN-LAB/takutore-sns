@@ -45,11 +45,12 @@ jobs:
           ENABLE_FB: ${{ vars.ENABLE_FB || 'true' }}
           ENABLE_IG: ${{ vars.ENABLE_IG || 'true' }}
           # DRY_RUN: 安全側にデフォルト true. 本番稼働時は repo var で DRY_RUN=false に
-          DRY_RUN: ${{ inputs.dry_run || vars.DRY_RUN || 'true' }}
+          # inputs.dry_run==false を渡したケースを明示処理 (false || ... の式バグ回避)
+          DRY_RUN: ${{ inputs.dry_run == true && 'true' || inputs.dry_run == false && 'false' || vars.DRY_RUN || 'true' }}
         run: python poster.py
 
       - name: Commit state.json
-        if: ${{ !inputs.dry_run && vars.DRY_RUN != 'true' }}
+        if: ${{ inputs.dry_run != true && vars.DRY_RUN != 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
