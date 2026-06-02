@@ -176,14 +176,26 @@ def main():
                 print(f"IG error: {e}", file=sys.stderr)
                 results["instagram"] = f"ERROR: {e}"
 
-    # 履歴更新 (どこか1つでも成功してたら記録)
-    if any("ERROR" not in str(v) and v != "SKIPPED: no image" for v in results.values()):
+    # 履歴更新 (どこか1つでも成功してたら記録 = 同パターンが翌日また選ばれない)
+    successes = [v for v in results.values() if "ERROR" not in str(v) and v != "SKIPPED: no image"]
+    if successes:
         state.setdefault("history", {})[post["id"]] = today
         save_state(state)
 
     print(f"Results: {results}")
-    return results
+
+    # 終了コード: いずれかの ENABLED プラットフォームが ERROR なら 1 を返す.
+    # これにより GitHub Actions のジョブが failure になり、リポジトリの
+    # 通知設定で持ち主にメールが来る (= 投稿失敗にすぐ気づける).
+    # SKIPPED (画像なし) は失敗扱いしない.
+    errors = [(k, v) for k, v in results.items() if isinstance(v, str) and v.startswith("ERROR")]
+    if errors:
+        print("\n!! FAILED platforms:", file=sys.stderr)
+        for platform, msg in errors:
+            print(f"  - {platform}: {msg}", file=sys.stderr)
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

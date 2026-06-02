@@ -36,7 +36,8 @@ def post_to_facebook(caption: str, image_path: str | None = None) -> str:
         data = {"message": caption, "access_token": token}
         r = requests.post(url, data=data, timeout=30)
 
-    r.raise_for_status()
+    if r.status_code >= 400:
+        raise RuntimeError(f"[FB post] HTTP {r.status_code} {r.reason}: {r.text}")
     result = r.json()
     post_id = result.get("post_id") or result.get("id")
     return f"https://facebook.com/{post_id}"

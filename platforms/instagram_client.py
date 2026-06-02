@@ -23,6 +23,14 @@ import requests
 GRAPH_API_VERSION = "v21.0"
 
 
+def _check(r: requests.Response, context: str = "") -> dict:
+    """200 系以外で response body 込みの例外を投げる. raise_for_status の代替."""
+    if r.status_code >= 400:
+        prefix = f"[{context}] " if context else ""
+        raise RuntimeError(f"{prefix}HTTP {r.status_code} {r.reason}: {r.text}")
+    return r.json()
+
+
 def post_to_instagram(caption: str, image_path: str) -> str:
     user_id = os.environ["IG_USER_ID"]
     token = os.environ["IG_ACCESS_TOKEN"]
@@ -51,8 +59,7 @@ def post_to_instagram(caption: str, image_path: str) -> str:
         },
         timeout=60,
     )
-    create_resp.raise_for_status()
-    container_id = create_resp.json()["id"]
+    container_id = _check(create_resp, "IG container create")["id"]
 
     # Step 2: コンテナのステータスを確認 (FINISHEDまで待つ)
     for _ in range(10):
@@ -61,8 +68,7 @@ def post_to_instagram(caption: str, image_path: str) -> str:
             params={"fields": "status_code", "access_token": token},
             timeout=30,
         )
-        status_resp.raise_for_status()
-        status = status_resp.json().get("status_code")
+        status = _check(status_resp, "IG container status").get("status_code")
         if status == "FINISHED":
             break
         if status == "ERROR":
@@ -76,6 +82,5 @@ def post_to_instagram(caption: str, image_path: str) -> str:
         data={"creation_id": container_id, "access_token": token},
         timeout=30,
     )
-    publish_resp.raise_for_status()
-    media_id = publish_resp.json()["id"]
+    media_id = _check(publish_resp, "IG publish")["id"]
     return f"https://instagram.com/p/{media_id}"
