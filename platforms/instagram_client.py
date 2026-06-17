@@ -84,3 +84,67 @@ def post_to_instagram(caption: str, image_path: str) -> str:
     )
     media_id = _check(publish_resp, "IG publish")["id"]
     return f"https://instagram.com/p/{media_id}"
+
+
+def _wait_finished(container_id: str, token: str) -> None:
+    """コンテナが FINISHED になるまで待つ（IG carousel の子/親で共用）。"""
+    base = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
+    for _ in range(20):
+        r = requests.get(
+            f"{base}/{container_id}",
+            params={"fields": "status_code", "access_token": token},
+            timeout=30,
+        )
+        status = _check(r, "IG status").get("status_code")
+        if status == "FINISHED":
+            return
+        if status == "ERROR":
+            raise RuntimeError(f"IG container error: {r.json()}")
+        time.sleep(3)
+    raise RuntimeError(f"IG container {container_id} not FINISHED in time")
+
+
+def post_carousel_to_instagram(caption: str, image_rels: list[str]) -> str:
+    """カルーセル投稿（連載のタイトルカード＋本文コマ用）。
+    image_rels はリポジトリ相対パス（images/serial/…）。IMAGE_BASE_URL から公開URLを組む。
+    各画像で子コンテナ作成 → media_type=CAROUSEL の親 → publish。"""
+    user_id = os.environ["IG_USER_ID"]
+    token = os.environ["IG_ACCESS_TOKEN"]
+    base_url = os.environ["IMAGE_BASE_URL"].rstrip("/")
+    base = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
+
+    children = []
+    for rel in image_rels:
+        r = requests.post(
+            f"{base}/{user_id}/media",
+            data={
+                "image_url": f"{base_url}/{rel}",
+                "is_carousel_item": "true",
+                "access_token": token,
+            },
+            timeout=60,
+        )
+        cid = _check(r, "IG child create")["id"]
+        _wait_finished(cid, token)
+        children.append(cid)
+
+    r = requests.post(
+        f"{base}/{user_id}/media",
+        data={
+            "media_type": "CAROUSEL",
+            "children": ",".join(children),
+            "caption": caption,
+            "access_token": token,
+        },
+        timeout=60,
+    )
+    parent_id = _check(r, "IG carousel create")["id"]
+    _wait_finished(parent_id, token)
+
+    r = requests.post(
+        f"{base}/{user_id}/media_publish",
+        data={"creation_id": parent_id, "access_token": token},
+        timeout=30,
+    )
+    media_id = _check(r, "IG publish")["id"]
+    return f"https://instagram.com/p/{media_id}"

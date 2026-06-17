@@ -17,12 +17,13 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from platforms.x_client import post_to_x
-from platforms.facebook_client import post_to_facebook
-from platforms.instagram_client import post_to_instagram
+from platforms.facebook_client import post_to_facebook, post_multi_photo_to_facebook
+from platforms.instagram_client import post_to_instagram, post_carousel_to_instagram
 
 ROOT = Path(__file__).parent
 POSTS_FILE = ROOT / "posts.json"
 STATE_FILE = ROOT / "state.json"
+SERIAL_FILE = ROOT / "serial.json"
 
 # どのプラットフォームを有効にするか (env varで制御も可能)
 ENABLED_PLATFORMS = {
@@ -33,6 +34,10 @@ ENABLED_PLATFORMS = {
 
 # ドライラン(投稿せずログだけ)
 DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
+
+# 連載モード: true なら serial.json を順次配信 (Meta=IG/FB限定)。
+# false (既定) なら従来の posts.json ローテーション。post_serial.yml だけが true を渡す。
+SERIAL_MODE = os.getenv("SERIAL_MODE", "false").lower() == "true"
 
 
 def load_posts():
@@ -117,7 +122,84 @@ def pick_next_post(posts, state):
     return sorted_posts[0]
 
 
+# ---------------- 連載モード (SERIAL_MODE) ----------------
+
+def load_serial():
+    with SERIAL_FILE.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+def pick_next_serial(serial, state):
+    """serial_cursor 以上で最小の enabled な話を返す。無ければ None (=完結/未投稿話なし)。"""
+    cursor = state.get("serial_cursor", 0)
+    for ep in sorted(serial["episodes"], key=lambda e: e["episode"]):
+        if ep["episode"] >= cursor and ep.get("enabled", True):
+            return ep
+    return None
+
+
+def run_serial():
+    """連載を1話、Meta(FB/IG)へ配信。X は対象外。成功したら serial_cursor を前進。"""
+    serial = load_serial()
+    state = load_state()
+    ep = pick_next_serial(serial, state)
+    if ep is None:
+        print("連載は完結済み (または未投稿話なし)。スキップ。")
+        return 0
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    print(f"[{today}] 連載 ep{ep['episode']:02d} {ep['epno']}「{ep['subtitle']}」 / 画像{len(ep['images'])}枚")
+
+    local_imgs = [str(ROOT / p) for p in ep["images"]]   # FB: ローカルファイル
+    rels = ep["images"]                                  # IG: 公開URL用の相対パス
+    caps = ep["captions"]
+    results = {}
+
+    if ENABLED_PLATFORMS["facebook"]:
+        try:
+            if DRY_RUN:
+                print(f"[DRY] FB 複数写真 {len(local_imgs)}枚: {caps['facebook'][:40]}...")
+                results["facebook"] = "DRY"
+            else:
+                results["facebook"] = post_multi_photo_to_facebook(caps["facebook"], local_imgs)
+        except Exception as e:
+            print(f"FB error: {e}", file=sys.stderr)
+            results["facebook"] = f"ERROR: {e}"
+
+    if ENABLED_PLATFORMS["instagram"]:
+        try:
+            if DRY_RUN:
+                print(f"[DRY] IG カルーセル {len(rels)}枚: {caps['instagram'][:40]}...")
+                results["instagram"] = "DRY"
+            else:
+                results["instagram"] = post_carousel_to_instagram(caps["instagram"], rels)
+        except Exception as e:
+            print(f"IG error: {e}", file=sys.stderr)
+            results["instagram"] = f"ERROR: {e}"
+
+    if ENABLED_PLATFORMS["x"]:
+        print("[serial] X は連載自動投稿の対象外 (Meta限定)。スキップ。")
+
+    # どこか1つでも成功したら cursor を前進 (重複・取りこぼし防止)。DRY_RUN では副作用なし。
+    successes = [v for v in results.values() if "ERROR" not in str(v)]
+    if successes and not DRY_RUN:
+        state["serial_cursor"] = ep["episode"] + 1
+        save_state(state)
+
+    print(f"Results: {results} / next serial_cursor = {state.get('serial_cursor')}")
+    errors = [(k, v) for k, v in results.items() if isinstance(v, str) and v.startswith("ERROR")]
+    if errors:
+        print("\n!! FAILED platforms:", file=sys.stderr)
+        for platform, msg in errors:
+            print(f"  - {platform}: {msg}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main():
+    if SERIAL_MODE:
+        return run_serial()
+
     posts = load_posts()
     state = load_state()
     post = pick_next_post(posts, state)

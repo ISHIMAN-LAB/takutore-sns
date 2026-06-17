@@ -1,9 +1,11 @@
-name: SNS Auto Post (Evergreen)
+name: SNS Auto Post (Serial / Meta)
 
+# 連載「あの扉の向こうで」を Instagram / Facebook に1話ずつ順次配信。
+# X は対象外（Meta限定）。エバーグリーン(post.yml=月・金)と分け、毎週水曜に投稿。
 on:
   schedule:
-    # 月・金 10:30 UTC = 19:30 JST （水曜は連載 post_serial.yml に譲る＝総量は週3で維持）
-    - cron: "30 10 * * 1,5"
+    # 毎週 水曜 10:30 UTC = 19:30 JST
+    - cron: "30 10 * * 3"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -12,21 +14,21 @@ on:
         default: true
 
 jobs:
-  post:
+  post-serial:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # state.json を commit back するため
+      contents: write  # state.json (serial_cursor) を commit back するため
     steps:
       - uses: actions/checkout@v5
 
-      - name: Launch date guard (cron は 2026-06-01 以降のみ実投稿)
+      - name: Launch date guard (cron は 2026-07-01 以降のみ実投稿)
         id: guard
         run: |
-          LAUNCH_DATE="2026-06-01"
+          LAUNCH_DATE="2026-07-01"
           TODAY=$(date -u +%Y-%m-%d)
           if [[ "${{ github.event_name }}" == "schedule" && "$TODAY" < "$LAUNCH_DATE" ]]; then
             echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "::notice::Cron triggered before launch ($LAUNCH_DATE). Today=$TODAY. Skipping."
+            echo "::notice::Serial cron triggered before launch ($LAUNCH_DATE). Today=$TODAY. Skipping."
           else
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "Proceeding (event=${{ github.event_name }}, today=$TODAY, launch=$LAUNCH_DATE)"
@@ -41,14 +43,9 @@ jobs:
         if: steps.guard.outputs.should_run == 'true'
         run: pip install -r requirements.txt
 
-      - name: Run poster
+      - name: Run poster (serial mode)
         if: steps.guard.outputs.should_run == 'true'
         env:
-          # X (未セットアップなので ENABLE_X=false が前提)
-          X_API_KEY: ${{ secrets.X_API_KEY }}
-          X_API_SECRET: ${{ secrets.X_API_SECRET }}
-          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
           # Facebook Page
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
@@ -56,21 +53,20 @@ jobs:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           IMAGE_BASE_URL: ${{ secrets.IMAGE_BASE_URL }}
-          # プラットフォーム ON/OFF (Repo Variables で上書き可)
-          ENABLE_X: ${{ vars.ENABLE_X || 'false' }}
+          # 連載モード ON / Meta限定 (X は常に OFF)
+          SERIAL_MODE: "true"
+          ENABLE_X: "false"
           ENABLE_FB: ${{ vars.ENABLE_FB || 'true' }}
           ENABLE_IG: ${{ vars.ENABLE_IG || 'true' }}
-          # DRY_RUN: 安全側にデフォルト true. 本番稼働時は repo var で DRY_RUN=false に
-          # inputs.dry_run==false を渡したケースを明示処理 (false || ... の式バグ回避)
+          # DRY_RUN: 安全側にデフォルト true. 本番は repo var DRY_RUN=false で (エバーグリーンと共通運用)
           DRY_RUN: ${{ inputs.dry_run == true && 'true' || inputs.dry_run == false && 'false' || vars.DRY_RUN || 'true' }}
         run: python poster.py
 
-      - name: Commit state.json
-        # poster が一部失敗で exit 1 を返しても state は保存したい (重複投稿防止)
+      - name: Commit state.json (serial_cursor)
         if: ${{ !cancelled() && steps.guard.outputs.should_run == 'true' && inputs.dry_run != true && vars.DRY_RUN != 'true' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add state.json || true
-          git diff --staged --quiet || git commit -m "Update state $(date -u +%Y-%m-%d)"
+          git diff --staged --quiet || git commit -m "Update serial_cursor $(date -u +%Y-%m-%d)"
           git push
