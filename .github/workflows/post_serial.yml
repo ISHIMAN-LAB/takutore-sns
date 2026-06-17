@@ -4,8 +4,8 @@ name: SNS Auto Post (Serial / Meta)
 # X は対象外（Meta限定）。エバーグリーン(post.yml=月・金)と分け、毎週水曜に投稿。
 on:
   schedule:
-    # 毎週 水曜 10:30 UTC = 19:30 JST
-    - cron: "30 10 * * 3"
+    # 毎週 火・金 10:30 UTC = 19:30 JST （週2話。エバーグリーンは月・木）
+    - cron: "30 10 * * 2,5"
   workflow_dispatch:
     inputs:
       dry_run:
