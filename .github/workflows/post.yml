@@ -2,8 +2,8 @@ name: SNS Auto Post (Evergreen)
 
 on:
   schedule:
-    # 月・木 10:30 UTC = 19:30 JST （火・金は連載 post_serial.yml。エバーグリーン週2＋連載週2）
-    - cron: "30 10 * * 1,4"
+    # 火・土 10:30 UTC = 19:30 JST （月・水・金は連載 post_serial.yml。エバーグリーン週2＋連載週3）
+    - cron: "30 10 * * 2,6"
   workflow_dispatch:
     inputs:
       dry_run:

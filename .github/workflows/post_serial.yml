@@ -1,11 +1,11 @@
 name: SNS Auto Post (Serial / Meta)
 
 # 連載「あの扉の向こうで」を Instagram / Facebook に1話ずつ順次配信。
-# X は対象外（Meta限定）。エバーグリーン(post.yml=月・金)と分け、毎週水曜に投稿。
+# X は対象外（Meta限定）。エバーグリーン(post.yml=火・土)と分け、月・水・金に投稿。
 on:
   schedule:
-    # 毎週 火・金 10:30 UTC = 19:30 JST （週2話。エバーグリーンは月・木）
-    - cron: "30 10 * * 2,5"
+    # 毎週 月・水・金 10:30 UTC = 19:30 JST （週3話。エバーグリーンは火・土）
+    - cron: "30 10 * * 1,3,5"
   workflow_dispatch:
     inputs:
       dry_run:
