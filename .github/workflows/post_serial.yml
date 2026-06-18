@@ -21,10 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Launch date guard (cron は 2026-07-01 以降のみ実投稿)
+      - name: Launch date guard (即時開始。当初2026-07-01予定を前倒し)
         id: guard
         run: |
-          LAUNCH_DATE="2026-07-01"
+          LAUNCH_DATE="2026-06-18"
           TODAY=$(date -u +%Y-%m-%d)
           if [[ "${{ github.event_name }}" == "schedule" && "$TODAY" < "$LAUNCH_DATE" ]]; then
             echo "should_run=false" >> $GITHUB_OUTPUT
