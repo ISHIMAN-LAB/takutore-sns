@@ -23,7 +23,7 @@ from platforms.instagram_client import post_to_instagram, post_carousel_to_insta
 ROOT = Path(__file__).parent
 POSTS_FILE = ROOT / "posts.json"
 STATE_FILE = ROOT / "state.json"
-SERIAL_FILE = ROOT / "serial.json"
+SERIAL_FILE = ROOT / os.getenv("SERIAL_FILE", "serial.json")   # 別連載は SERIAL_FILE で切替 (例: serial_side.json)
 
 # どのプラットフォームを有効にするか (env varで制御も可能)
 ENABLED_PLATFORMS = {
@@ -38,6 +38,9 @@ DRY_RUN = os.getenv("DRY_RUN", "false").lower() == "true"
 # 連載モード: true なら serial.json を順次配信 (Meta=IG/FB限定)。
 # false (既定) なら従来の posts.json ローテーション。post_serial.yml だけが true を渡す。
 SERIAL_MODE = os.getenv("SERIAL_MODE", "false").lower() == "true"
+
+# 連載ごとの進行カーソル名。本編=serial_cursor / サイドストーリー=side_cursor で共存可能。
+SERIAL_CURSOR_KEY = os.getenv("SERIAL_CURSOR_KEY", "serial_cursor")
 
 
 def load_posts():
@@ -131,7 +134,7 @@ def load_serial():
 
 def pick_next_serial(serial, state):
     """serial_cursor 以上で最小の enabled な話を返す。無ければ None (=完結/未投稿話なし)。"""
-    cursor = state.get("serial_cursor", 0)
+    cursor = state.get(SERIAL_CURSOR_KEY, 0)
     for ep in sorted(serial["episodes"], key=lambda e: e["episode"]):
         if ep["episode"] >= cursor and ep.get("enabled", True):
             return ep
@@ -183,10 +186,10 @@ def run_serial():
     # どこか1つでも成功したら cursor を前進 (重複・取りこぼし防止)。DRY_RUN では副作用なし。
     successes = [v for v in results.values() if "ERROR" not in str(v)]
     if successes and not DRY_RUN:
-        state["serial_cursor"] = ep["episode"] + 1
+        state[SERIAL_CURSOR_KEY] = ep["episode"] + 1
         save_state(state)
 
-    print(f"Results: {results} / next serial_cursor = {state.get('serial_cursor')}")
+    print(f"Results: {results} / next {SERIAL_CURSOR_KEY} = {state.get(SERIAL_CURSOR_KEY)}")
     errors = [(k, v) for k, v in results.items() if isinstance(v, str) and v.startswith("ERROR")]
     if errors:
         print("\n!! FAILED platforms:", file=sys.stderr)

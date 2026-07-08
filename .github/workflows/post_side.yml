@@ -1,0 +1,75 @@
+name: SNS Auto Post (Side Story / Meta)
+
+# サイドストーリー「あの扉の向こうで ——サイドストーリー」を Instagram / Facebook に1話ずつ配信。
+# 本編(post_serial.yml=月水金19:30)・エバーグリーン(post.yml=火土19:30)と時間帯を分け、
+# 月・水・金の朝7:30に投稿（朝活層ターゲット）。serial_side.json / side_cursor で本編と独立進行。
+on:
+  schedule:
+    # 毎週 月・水・金 22:30 UTC = 翌 07:30 JST（週3話）
+    - cron: "30 22 * * 0,2,4"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "ドライラン(投稿せずログのみ)"
+        type: boolean
+        default: true
+
+jobs:
+  post-side:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # state.json (side_cursor) を commit back するため
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Launch date guard
+        id: guard
+        run: |
+          LAUNCH_DATE="2026-07-13"
+          TODAY=$(date -u +%Y-%m-%d)
+          if [[ "${{ github.event_name }}" == "schedule" && "$TODAY" < "$LAUNCH_DATE" ]]; then
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "::notice::Side-story cron triggered before launch ($LAUNCH_DATE). Today=$TODAY. Skipping."
+          else
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "Proceeding (event=${{ github.event_name }}, today=$TODAY, launch=$LAUNCH_DATE)"
+          fi
+
+      - uses: actions/setup-python@v6
+        if: steps.guard.outputs.should_run == 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        if: steps.guard.outputs.should_run == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Run poster (side-story serial mode)
+        if: steps.guard.outputs.should_run == 'true'
+        env:
+          # Facebook Page
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
+          # Instagram Business
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IMAGE_BASE_URL: ${{ secrets.IMAGE_BASE_URL }}
+          # 連載モード ON / 別ファイル・別カーソルで本編と独立 / Meta限定 (X は常に OFF)
+          SERIAL_MODE: "true"
+          SERIAL_FILE: "serial_side.json"
+          SERIAL_CURSOR_KEY: "side_cursor"
+          ENABLE_X: "false"
+          ENABLE_FB: ${{ vars.ENABLE_FB || 'true' }}
+          ENABLE_IG: ${{ vars.ENABLE_IG || 'true' }}
+          # DRY_RUN: 安全側にデフォルト true. 本番は repo var DRY_RUN=false で (本編と共通運用)
+          DRY_RUN: ${{ inputs.dry_run == true && 'true' || inputs.dry_run == false && 'false' || vars.DRY_RUN || 'true' }}
+        run: python poster.py
+
+      - name: Commit state.json (side_cursor)
+        if: ${{ !cancelled() && steps.guard.outputs.should_run == 'true' && inputs.dry_run != true && vars.DRY_RUN != 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json || true
+          git diff --staged --quiet || git commit -m "Update side_cursor $(date -u +%Y-%m-%d)"
+          git push
