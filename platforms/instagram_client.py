@@ -31,6 +31,36 @@ def _check(r: requests.Response, context: str = "") -> dict:
     return r.json()
 
 
+def _publish_with_retry(user_id: str, creation_id: str, token: str,
+                        attempts: int = 6, wait: int = 15) -> str:
+    """media_publish を実行。IG 側の準備遅れ (code 9007 / subcode 2207027
+    "Media ID is not available") は一時的なので、待って再試行する。
+    status_code=FINISHED の直後でも publish が通らないことがあるための対策。"""
+    base = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
+    last = None
+    for i in range(attempts):
+        r = requests.post(
+            f"{base}/{user_id}/media_publish",
+            data={"creation_id": creation_id, "access_token": token},
+            timeout=30,
+        )
+        if r.status_code < 400:
+            return r.json()["id"]
+
+        last = r
+        try:
+            err = r.json().get("error", {})
+        except ValueError:
+            err = {}
+        transient = err.get("code") == 9007 or err.get("error_subcode") == 2207027
+        if not transient or i == attempts - 1:
+            break
+        print(f"[IG publish] not ready (attempt {i + 1}/{attempts}) — {wait}s 待って再試行")
+        time.sleep(wait)
+
+    raise RuntimeError(f"[IG publish] HTTP {last.status_code} {last.reason}: {last.text}")
+
+
 def post_to_instagram(caption: str, image_path: str) -> str:
     user_id = os.environ["IG_USER_ID"]
     token = os.environ["IG_ACCESS_TOKEN"]
@@ -75,14 +105,9 @@ def post_to_instagram(caption: str, image_path: str) -> str:
             raise RuntimeError(f"IG container error: {status_resp.json()}")
         time.sleep(3)
 
-    # Step 3: 公開
-    publish_url = f"{base}/{user_id}/media_publish"
-    publish_resp = requests.post(
-        publish_url,
-        data={"creation_id": container_id, "access_token": token},
-        timeout=30,
-    )
-    media_id = _check(publish_resp, "IG publish")["id"]
+    # Step 3: 公開 (準備遅れは _publish_with_retry がリトライする)
+    time.sleep(5)
+    media_id = _publish_with_retry(user_id, container_id, token)
     return f"https://instagram.com/p/{media_id}"
 
 
@@ -140,11 +165,7 @@ def post_carousel_to_instagram(caption: str, image_rels: list[str]) -> str:
     )
     parent_id = _check(r, "IG carousel create")["id"]
     _wait_finished(parent_id, token)
+    time.sleep(5)   # FINISHED 直後は publish が通らないことがあるので少し寝かせる
 
-    r = requests.post(
-        f"{base}/{user_id}/media_publish",
-        data={"creation_id": parent_id, "access_token": token},
-        timeout=30,
-    )
-    media_id = _check(r, "IG publish")["id"]
+    media_id = _publish_with_retry(user_id, parent_id, token)
     return f"https://instagram.com/p/{media_id}"
