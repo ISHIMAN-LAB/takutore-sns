@@ -13,6 +13,15 @@ on:
         description: "ドライラン(投稿せずログのみ)"
         type: boolean
         default: true
+      episode:
+        description: "復旧用: 話数を指定するとその話だけ投稿 (カーソルは進めない)。空なら通常配信"
+        type: string
+        default: ""
+      platforms:
+        description: "投稿先"
+        type: choice
+        options: ["both", "ig_only", "fb_only"]
+        default: "both"
 
 jobs:
   post-side:
@@ -58,9 +67,11 @@ jobs:
           SERIAL_MODE: "true"
           SERIAL_FILE: "serial_side.json"
           SERIAL_CURSOR_KEY: "side_cursor"
+          SERIAL_EPISODE: ${{ inputs.episode }}
           ENABLE_X: "false"
-          ENABLE_FB: ${{ vars.ENABLE_FB || 'true' }}
-          ENABLE_IG: ${{ vars.ENABLE_IG || 'true' }}
+          # platforms 入力で片側だけ投稿できる (復旧用)。既定は repo var に従う。
+          ENABLE_FB: ${{ inputs.platforms == 'ig_only' && 'false' || vars.ENABLE_FB || 'true' }}
+          ENABLE_IG: ${{ inputs.platforms == 'fb_only' && 'false' || vars.ENABLE_IG || 'true' }}
           # DRY_RUN: 安全側にデフォルト true. 本番は repo var DRY_RUN=false で (本編と共通運用)
           DRY_RUN: ${{ inputs.dry_run == true && 'true' || inputs.dry_run == false && 'false' || vars.DRY_RUN || 'true' }}
         run: python poster.py

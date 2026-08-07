@@ -42,6 +42,10 @@ SERIAL_MODE = os.getenv("SERIAL_MODE", "false").lower() == "true"
 # 連載ごとの進行カーソル名。本編=serial_cursor / サイドストーリー=side_cursor で共存可能。
 SERIAL_CURSOR_KEY = os.getenv("SERIAL_CURSOR_KEY", "serial_cursor")
 
+# 復旧用: 話数を指定すると、その話だけを投稿する (カーソルは動かさない)。
+# 例) 片方の媒体だけ失敗した話を、ENABLE_FB=false 等と併用して投稿し直す。
+SERIAL_EPISODE = os.getenv("SERIAL_EPISODE", "").strip()
+
 
 def load_posts():
     with POSTS_FILE.open(encoding="utf-8") as f:
@@ -145,7 +149,16 @@ def run_serial():
     """連載を1話、Meta(FB/IG)へ配信。X は対象外。成功したら serial_cursor を前進。"""
     serial = load_serial()
     state = load_state()
-    ep = pick_next_serial(serial, state)
+
+    if SERIAL_EPISODE:
+        want = int(SERIAL_EPISODE)
+        ep = next((e for e in serial["episodes"] if e["episode"] == want), None)
+        if ep is None:
+            print(f"[error] ep{want} が {SERIAL_FILE.name} に見つからない。", file=sys.stderr)
+            return 1
+        print(f"[recovery] ep{want} を指定投稿 (カーソルは前進させない)")
+    else:
+        ep = pick_next_serial(serial, state)
     if ep is None:
         print("連載は完結済み (または未投稿話なし)。スキップ。")
         return 0
@@ -184,8 +197,9 @@ def run_serial():
         print("[serial] X は連載自動投稿の対象外 (Meta限定)。スキップ。")
 
     # どこか1つでも成功したら cursor を前進 (重複・取りこぼし防止)。DRY_RUN では副作用なし。
+    # ただし SERIAL_EPISODE 指定 (復旧投稿) のときは進行に触らない。
     successes = [v for v in results.values() if "ERROR" not in str(v)]
-    if successes and not DRY_RUN:
+    if successes and not DRY_RUN and not SERIAL_EPISODE:
         state[SERIAL_CURSOR_KEY] = ep["episode"] + 1
         save_state(state)
 
